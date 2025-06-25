@@ -160,8 +160,8 @@ class DICOMSeriesToVolumeOperator(Operator):
         # check if vol_data, intercept, and slope can be cast to uint16 without data loss
         if (
             np.can_cast(vol_data, np.uint16, casting="safe")
-            and np.can_cast(intercept, np.uint16, casting="safe")
-            and np.can_cast(slope, np.uint16, casting="safe")
+            and np.can_cast(np.int16(intercept), np.uint16, casting="safe")
+            and np.can_cast(np.int16(slope), np.uint16, casting="safe")
         ):
             logging.info("Casting to uint16")
             vol_data = np.array(vol_data, dtype=np.uint16)
@@ -169,8 +169,8 @@ class DICOMSeriesToVolumeOperator(Operator):
             slope = np.uint16(slope)
         elif (
             np.can_cast(vol_data, np.float32, casting="safe")
-            and np.can_cast(intercept, np.float32, casting="safe")
-            and np.can_cast(slope, np.float32, casting="safe")
+            and np.can_cast(np.int16(intercept), np.float32, casting="safe")
+            and np.can_cast(np.int16(slope), np.float32, casting="safe")
         ):
             logging.info("Casting to float32")
             vol_data = np.array(vol_data, dtype=np.float32)
@@ -178,8 +178,8 @@ class DICOMSeriesToVolumeOperator(Operator):
             slope = np.float32(slope)
         elif (
             np.can_cast(vol_data, np.float64, casting="safe")
-            and np.can_cast(intercept, np.float64, casting="safe")
-            and np.can_cast(slope, np.float64, casting="safe")
+            and np.can_cast(np.int16(intercept), np.float64, casting="safe")
+            and np.can_cast(np.int16(slope), np.float64, casting="safe")
         ):
             logging.info("Casting to float64")
             vol_data = np.array(vol_data, dtype=np.float64)
