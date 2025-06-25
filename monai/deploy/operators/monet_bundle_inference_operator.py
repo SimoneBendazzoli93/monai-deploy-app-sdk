@@ -14,7 +14,7 @@ from typing import Any, Dict, Tuple, Union
 from monai.deploy.core import Image
 from monai.deploy.operators.monai_bundle_inference_operator import MonaiBundleInferenceOperator, get_bundle_config
 from monai.deploy.utils.importutil import optional_import
-
+from monai.transforms import ResampleToMatch, ConcatItemsd
 MONAI_UTILS = "monai.utils"
 nibabel, _ = optional_import("nibabel", "3.2.1")
 torch, _ = optional_import("torch", "1.10.2")
@@ -83,6 +83,14 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
 
         self._nnunet_predictor.predictor.network = self._model_network
         # os.environ['nnUNet_def_n_proc'] = "1"
+
+        if len(kwargs) == 0:
+            multimodal_data = {"image": data}
+            for key in kwargs.keys():
+                if isinstance(kwargs[key], MetaTensor):
+                    multimodal_data[key] = ResampleToMatch()(kwargs[key],data)
+            data = ConcatItemsd(keys=list(multimodal_data.keys()),name="image")(multimodal_data)["image"]
+
         if len(data.shape) == 4:
             data = data[None]
         return self._nnunet_predictor(data)
