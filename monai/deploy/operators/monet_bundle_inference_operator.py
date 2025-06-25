@@ -84,7 +84,7 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
         self._nnunet_predictor.predictor.network = self._model_network
         # os.environ['nnUNet_def_n_proc'] = "1"
 
-        if len(kwargs) == 0:
+        if len(kwargs) > 0:
             multimodal_data = {"image": data}
             for key in kwargs.keys():
                 if isinstance(kwargs[key], MetaTensor):
