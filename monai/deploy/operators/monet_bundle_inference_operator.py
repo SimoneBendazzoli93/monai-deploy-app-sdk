@@ -14,7 +14,8 @@ from typing import Any, Dict, Tuple, Union
 from monai.deploy.core import Image
 from monai.deploy.operators.monai_bundle_inference_operator import MonaiBundleInferenceOperator, get_bundle_config
 from monai.deploy.utils.importutil import optional_import
-from monai.transforms import ResampleToMatch, ConcatItemsd
+from monai.transforms import SpatialResample, ConcatItemsd
+import numpy as np
 MONAI_UTILS = "monai.utils"
 nibabel, _ = optional_import("nibabel", "3.2.1")
 torch, _ = optional_import("torch", "1.10.2")
@@ -38,6 +39,51 @@ MapTransform: Any = MapTransform_
 ConfigParser: Any = ConfigParser_
 __all__ = ["MONetBundleInferenceOperator"]
 
+
+def define_affine_from_meta(meta: Dict[str, Any]) -> np.ndarray:
+    """
+    Define an affine matrix from the metadata of a tensor.
+
+    Parameters
+    ----------
+    meta : Dict[str, Any]
+        Metadata dictionary containing 'pixdim', 'origin', and 'direction'.
+
+    Returns
+    -------
+    np.ndarray
+        A 4x4 affine matrix constructed from the metadata.
+    """
+    pixdim = meta["pixdim"]
+    origin = meta["origin"]
+    direction = meta["direction"].reshape(3, 3)
+
+                    # Extract 3D spacing
+    spacing = pixdim[1:4]  # drop the first element (usually 1 for time dim)
+
+    # Scale the direction vectors by spacing to get rotation+scale part
+    affine = direction * spacing[np.newaxis, :]
+
+    # Append origin to get 3x4 affine matrix
+    affine = np.column_stack((affine, origin))
+
+    # Make it a full 4x4 affine
+    affine_4x4 = np.vstack((affine, [0, 0, 0, 1]))
+    pixdim = meta["pixdim"]
+    origin = meta["origin"]
+    direction = meta["direction"].reshape(3, 3)
+
+    # Extract 3D spacing
+    spacing = pixdim[1:4]  # drop the first element (usually 1 for time dim)
+
+    # Scale the direction vectors by spacing to get rotation+scale part
+    affine = direction * spacing[np.newaxis, :]
+
+    # Append origin to get 3x4 affine matrix
+    affine = np.column_stack((affine, origin))
+
+    # Make it a full 4x4 affine
+    return torch.Tensor(np.vstack((affine, [0, 0, 0, 1])))
 
 class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
     """
@@ -88,7 +134,13 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
             multimodal_data = {"image": data}
             for key in kwargs.keys():
                 if isinstance(kwargs[key], MetaTensor):
-                    multimodal_data[key] = ResampleToMatch()(kwargs[key],data)
+                    source_affine_4x4 = define_affine_from_meta(kwargs[key].meta)
+                    target_affine_4x4 = define_affine_from_meta(data.meta)
+                    kwargs[key].meta["affine"] = torch.Tensor(source_affine_4x4)
+
+                    multimodal_data[key] = SpatialResample(mode="bilinear")(kwargs[key], dst_affine=target_affine_4x4,
+                                                         spatial_size=data.shape[1:4],
+                                                         )
             data = ConcatItemsd(keys=list(multimodal_data.keys()),name="image")(multimodal_data)["image"]
 
         if len(data.shape) == 4:

@@ -45,6 +45,10 @@ class NiftiDataLoader(Operator):
         self.input_name_path = "image_path"
         self.output_name_image = "image"
 
+        self.modality_mapping = None  # Optional, to be set by the app if needed.
+        if "modality_mapping" in kwargs:
+            self.modality_mapping = kwargs["modality_mapping"]
+
         # Need to call the base class constructor last
         super().__init__(fragment, *args, **kwargs)
 
@@ -67,6 +71,8 @@ class NiftiDataLoader(Operator):
             # Try to fall back to use the object attribute if it is valid
             if self.input_path and self.input_path.is_file():
                 input_path = self.input_path
+            elif self.input_path and self.input_path.is_dir() and self.modality_mapping:
+                input_path = str(Path(self.input_path).joinpath(Path(self.input_path).name + self.modality_mapping))
             else:
                 raise ValueError(f"No valid file path from input port or obj attribute: {self.input_path}")
 
