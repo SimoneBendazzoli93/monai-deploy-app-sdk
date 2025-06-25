@@ -72,7 +72,14 @@ class NiftiDataLoader(Operator):
             if self.input_path and self.input_path.is_file():
                 input_path = self.input_path
             elif self.input_path and self.input_path.is_dir() and self.modality_mapping:
-                input_path = str(Path(self.input_path).joinpath(Path(self.input_path).name + self.modality_mapping))
+                # Find all files in the input directory
+                files = list(Path(self.input_path).glob("*"))
+                self._logger.info(f"Found files in directory {self.input_path}: {files}")
+                for file in files:
+                    if file.name.endswith(self.modality_mapping):
+                        id_prefix = file.name.replace(self.modality_mapping, "")
+
+                        input_path = str(Path(self.input_path).joinpath(id_prefix + self.modality_mapping))
             else:
                 raise ValueError(f"No valid file path from input port or obj attribute: {self.input_path}")
 
