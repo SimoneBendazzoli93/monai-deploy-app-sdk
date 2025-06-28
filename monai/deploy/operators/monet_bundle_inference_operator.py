@@ -54,6 +54,8 @@ def define_affine_from_meta(meta: Dict[str, Any]) -> np.ndarray:
     np.ndarray
         A 4x4 affine matrix constructed from the metadata.
     """
+    if "pixdim" not in meta or "origin" not in meta or "direction" not in meta:
+        return meta.get("affine", np.eye(4))
     pixdim = meta["pixdim"]
     origin = meta["origin"]
     direction = meta["direction"].reshape(3, 3)
