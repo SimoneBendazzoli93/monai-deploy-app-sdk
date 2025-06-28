@@ -10,7 +10,7 @@
 # limitations under the License.
 
 from typing import Any, Dict, Tuple, Union
-
+import logging
 from monai.deploy.core import Image
 from monai.deploy.operators.monai_bundle_inference_operator import MonaiBundleInferenceOperator, get_bundle_config
 from monai.deploy.utils.importutil import optional_import
@@ -114,6 +114,7 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
 
         super().__init__(*args, **kwargs)
 
+        self._logger = logging.getLogger("{}.{}".format(__name__, type(self).__name__))
         self._nnunet_predictor: torch.nn.Module = None
         self.ref_modality = None
         if "ref_modality" in kwargs:
