@@ -115,6 +115,9 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
         super().__init__(*args, **kwargs)
 
         self._nnunet_predictor: torch.nn.Module = None
+        self.ref_modality = None
+        if "ref_modality" in kwargs:
+            self.ref_modality = kwargs["ref_modality"]
 
     def _init_config(self, config_names):
 
@@ -132,15 +135,28 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
 
         if len(kwargs) > 0:
             multimodal_data = {"image": data}
+            if self.ref_modality is not None:
+                if self.ref_modality not in kwargs:
+                    target_affine_4x4 = define_affine_from_meta(data.meta)
+                    spatial_size = data.shape[1:4]
+                else:
+                    target_affine_4x4 = define_affine_from_meta(kwargs[self.ref_modality].meta)
+                    spatial_size = kwargs[self.ref_modality].shape[1:4]
+            else:
+                target_affine_4x4 = define_affine_from_meta(data.meta)
+                spatial_size = data.shape[1:4]
+            
             for key in kwargs.keys():
                 if isinstance(kwargs[key], MetaTensor):
                     source_affine_4x4 = define_affine_from_meta(kwargs[key].meta)
-                    target_affine_4x4 = define_affine_from_meta(data.meta)
                     kwargs[key].meta["affine"] = torch.Tensor(source_affine_4x4)
 
                     multimodal_data[key] = SpatialResample(mode="bilinear")(kwargs[key], dst_affine=target_affine_4x4,
-                                                         spatial_size=data.shape[1:4],
+                                                         spatial_size=spatial_size,
                                                          )
+            multimodal_data["image"] = SpatialResample(mode="bilinear")(
+                data, dst_affine=target_affine_4x4, spatial_size=spatial_size
+            )
             data = ConcatItemsd(keys=list(multimodal_data.keys()),name="image")(multimodal_data)["image"]
 
         if len(data.shape) == 4:
