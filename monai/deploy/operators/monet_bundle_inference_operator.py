@@ -142,27 +142,33 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
                 if self.ref_modality not in kwargs:
                     target_affine_4x4 = define_affine_from_meta(data.meta)
                     spatial_size = data.shape[1:4]
+                    pixdim = data.meta["pixdim"]
                 else:
                     target_affine_4x4 = define_affine_from_meta(kwargs[self.ref_modality].meta)
                     spatial_size = kwargs[self.ref_modality].shape[1:4]
+                    pixdim = kwargs[self.ref_modality].meta["pixdim"]
             else:
                 target_affine_4x4 = define_affine_from_meta(data.meta)
                 spatial_size = data.shape[1:4]
+                pixdim = data.meta["pixdim"]
             
             for key in kwargs.keys():
                 if isinstance(kwargs[key], MetaTensor):
                     source_affine_4x4 = define_affine_from_meta(kwargs[key].meta)
                     kwargs[key].meta["affine"] = torch.Tensor(source_affine_4x4)
+                    kwargs[key].meta["pixdim"] = pixdim
                     self._logger.info(f"Resampling {key} from {source_affine_4x4} to {target_affine_4x4}")
 
                     multimodal_data[key] = SpatialResample(mode="bilinear")(kwargs[key], dst_affine=target_affine_4x4,
                                                          spatial_size=spatial_size,
                                                          )
+            source_affine_4x4 = define_affine_from_meta(data.meta)
+            data.meta["affine"] = torch.Tensor(source_affine_4x4)
+            data.meta["pixdim"] = pixdim
             multimodal_data["image"] = SpatialResample(mode="bilinear")(
                 data, dst_affine=target_affine_4x4, spatial_size=spatial_size
             )
-            source_affine_4x4 = define_affine_from_meta(data.meta)
-            data.meta["affine"] = torch.Tensor(source_affine_4x4)
+            
             self._logger.info(f"Resampling 'image' from from {source_affine_4x4} to {target_affine_4x4}")
             data = ConcatItemsd(keys=list(multimodal_data.keys()),name="image")(multimodal_data)["image"]
 

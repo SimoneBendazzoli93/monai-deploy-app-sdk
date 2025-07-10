@@ -15,7 +15,7 @@ import math
 from typing import Dict, List, Union
 
 import numpy as np
-
+import time
 from monai.deploy.core import ConditionType, Fragment, Operator, OperatorSpec
 from monai.deploy.core.domain.dicom_series_selection import StudySelectedSeries
 from monai.deploy.core.domain.image import Image
@@ -92,6 +92,48 @@ class DICOMSeriesToVolumeOperator(Operator):
         # TODO: This needs to be updated once allowed to output multiple Image objects
         return study_selected_series_list[0].selected_series[0].image
 
+    def normalize_PET_to_SUV_BW(self, slice):
+        corrected_image = slice[0x0028, 0x0051].value
+        decay_correction = slice[0x0054, 0x1102].value
+        units = slice[0x0054, 0x1001].value
+
+        series_date = slice.SeriesDate
+        acquisition_date = slice.AcquisitionDate
+        series_time = slice.SeriesTime
+        acquisition_time = slice.AcquisitionTime
+        half_life = slice.RadiopharmaceuticalInformationSequence[0].RadionuclideHalfLife
+        weight = slice.PatientWeight
+
+        if "ATTN" in corrected_image and "DECY" in corrected_image and decay_correction == "START":
+            if units == "BQML":
+                if series_time <= acquisition_time and series_date <= acquisition_date:
+                    scan_date = series_date
+                    scan_time = series_time
+                else:
+                    scan_date = acquisition_date
+                    scan_time = acquisition_time
+                # if not RadiopharmaceuticalStartTime in ds.RadiopharmaceuticalInformationSequence[0]:
+                #    ...
+                # else:
+                start_time = slice.RadiopharmaceuticalInformationSequence[0].RadiopharmaceuticalStartTime
+                start_date = scan_date
+
+                scan_time = str(round(float(scan_time)))
+                str_scan_time = time.strptime(scan_date + scan_time, "%Y%m%d%H%M%S")
+
+                start_time = str(round(float(start_time)))
+
+                str_start_time = time.strptime(start_date + start_time, "%Y%m%d%H%M%S")
+
+                decay_time = time.mktime(str_scan_time) - time.mktime(str_start_time)
+
+                injected_dose = slice.RadiopharmaceuticalInformationSequence[0].RadionuclideTotalDose
+                decayed_dose = injected_dose * math.pow(2, -decay_time / half_life)
+
+                SUB_BW_scale_factor = (weight * 1000) / decayed_dose
+
+        return SUB_BW_scale_factor
+    
     def generate_voxel_data(self, series):
         """Applies rescale slope and rescale intercept to the pixels.
 
@@ -146,19 +188,43 @@ class DICOMSeriesToVolumeOperator(Operator):
                     f"Cannot process pixel data with Photometric Interpretation of {photometric_interpretation}."
                 )
 
+        sub_bw_scale_factor = None
+        if slices[0].get_native_sop_instance().get("Modality", "").strip().upper() == "PT":
+            try:
+                sub_bw_scale_factor = self.normalize_PET_to_SUV_BW(slices[0].get_native_sop_instance())
+                logging.info(f"Normalization factor for PET to SUV BW: {sub_bw_scale_factor}")
+            except KeyError as e:
+                logging.warning(f"Failed to normalize PET to SUV BW: {e}. Continuing without normalization.")
+        
         # Rescale Intercept and Slope attributes might be missing, but safe to assume defaults.
         try:
-            intercept = slices[0][0x0028, 0x1052].value
+            intercept = [s[0x0028, 0x1052].value for s in slices]
+            if len(np.unique(intercept)) == 1:
+                intercept = intercept[0]
         except KeyError:
             intercept = 0
 
         try:
-            slope = slices[0][0x0028, 0x1053].value
+            slope = [s[0x0028, 0x1053].value for s in slices]
+            if len(np.unique(slope)) == 1:
+                slope = slope[0]
         except KeyError:
             slope = 1
 
+        if  isinstance(intercept, list) or isinstance(slope, list):
+            vol_data = np.array(vol_data, dtype=np.float32)
+            if isinstance(intercept, list):
+                intercept = [np.float32(i) for i in intercept]
+            else:
+                intercept = np.float32(intercept)
+            if isinstance(slope, list):
+                slope = [np.float32(s) for s in slope]
+            else:
+                slope = np.float32(slope)
+            logging.info("slope and intercept have different values for each slice, casting to float32")
+            logging.info("Casting to float32")
         # check if vol_data, intercept, and slope can be cast to uint16 without data loss
-        if (
+        elif (
             np.can_cast(vol_data, np.uint16, casting="safe")
             and np.can_cast(np.int16(intercept), np.uint16, casting="safe")
             and np.can_cast(np.int16(slope), np.uint16, casting="safe")
@@ -186,10 +252,22 @@ class DICOMSeriesToVolumeOperator(Operator):
             intercept = np.float64(intercept)
             slope = np.float64(slope)
 
-        if slope != 1:
-            vol_data = slope * vol_data
+        if isinstance(slope, list):
+            for idx, s in enumerate(slope):
+                if sub_bw_scale_factor is not None:
+                    vol_data[idx] = s * sub_bw_scale_factor * vol_data[idx]
+                else:
+                    vol_data[idx] = s * vol_data[idx]
+        else:
+            if slope != 1:
+                vol_data = slope * vol_data
 
-        vol_data += intercept
+        if isinstance(intercept, list):
+            for idx, i in enumerate(intercept):
+                vol_data[idx] = vol_data[idx] + i
+        else:
+            vol_data += intercept
+        
         return vol_data
 
     def create_volumetric_image(self, vox_data, metadata):
