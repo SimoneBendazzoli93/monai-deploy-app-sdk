@@ -12,39 +12,20 @@
 import logging
 from pathlib import Path
 
-from pydicom.sr.codedict import codes
-
 from monai.deploy.conditions import CountCondition
 from monai.deploy.core import AppContext, Application
 from monai.deploy.core.domain import Image
 from monai.deploy.core.io_type import IOType
-from monai.deploy.operators.dicom_data_loader_operator import DICOMDataLoaderOperator
-from monai.deploy.operators.dicom_seg_writer_operator import DICOMSegmentationWriterOperator, SegmentDescription
-from monai.deploy.operators.dicom_series_selector_operator import DICOMSeriesSelectorOperator
-from monai.deploy.operators.dicom_series_to_volume_operator import DICOMSeriesToVolumeOperator
 from monai.deploy.operators.monai_bundle_inference_operator import BundleConfigNames, IOMapping
 from monai.deploy.operators.monet_bundle_inference_operator import MONetBundleInferenceOperator
-from monai.deploy.operators.stl_conversion_operator import STLConversionOperator
+from monai.deploy.operators.nii_data_loader_operator import NiftiDataLoader
+from monai.deploy.operators.nii_data_writer_operator import NiftiDataWriter
 
 
 # @resource(cpu=1, gpu=1, memory="7Gi")
 # pip_packages can be a string that is a path(str) to requirements.txt file or a list of packages.
 # The monai pkg is not required by this class, instead by the included operators.
-class AISpleenMONetSegApp(Application):
-    """Demonstrates inference with built-in MONet Bundle inference operator with DICOM files as input/output
-
-    This application loads a set of DICOM instances, select the appropriate series, converts the series to
-    3D volume image, performs inference with the built-in MONet Bundle inference operator, including nnUNet resampling,pre-processing
-    and post-processing, save the segmentation image in a DICOM Seg OID in an instance file, and optionally the
-    surface mesh in STL format.
-
-    Pertinent nnUNet MONAI Bundle:
-      <Upload to the MONAI Model Zoo>
-
-    Execution Time Estimate:
-      With a Nvidia RTXA600 48GB GPU, for an input DICOM Series of size 106x415x415 and patches of size 64x192x160, the execution time is around
-      50 seconds with saving both DICOM Seg and surface mesh STL file.
-    """
+class AILymphomaNIFTIMONetSegApp(Application):
 
     def __init__(self, *args, **kwargs):
         """Creates an application instance."""
@@ -68,12 +49,13 @@ class AISpleenMONetSegApp(Application):
         app_output_path = Path(app_context.output_path)
 
         # Create the custom operator(s) as well as SDK built-in operator(s).
-        study_loader_op = DICOMDataLoaderOperator(
-            self, CountCondition(self, 1), input_folder=app_input_path, name="study_loader_op"
+        ct_nifti_loader_op = NiftiDataLoader(
+            self, CountCondition(self, 1), input_path=app_input_path, name="ct_nifti_loader_op", modality_mapping="_ct.nii.gz"
         )
-        series_selector_op = DICOMSeriesSelectorOperator(self, rules=Sample_Rules_Text, name="series_selector_op")
-        series_to_vol_op = DICOMSeriesToVolumeOperator(self, name="series_to_vol_op")
 
+        pt_nifti_loader_op = NiftiDataLoader(
+            self, CountCondition(self, 1), input_path=app_input_path, name="pt_nifti_loader_op", modality_mapping="_pet.nii.gz"
+        )
         # Create the inference operator that supports MONAI Bundle and automates the inference.
         # The IOMapping labels match the input and prediction keys in the pre and post processing.
         # The model_name is optional when the app has only one model.
@@ -85,79 +67,48 @@ class AISpleenMONetSegApp(Application):
 
         bundle_spleen_seg_op = MONetBundleInferenceOperator(
             self,
-            input_mapping=[IOMapping("image", Image, IOType.IN_MEMORY)],
+            input_mapping=[IOMapping("CT", Image, IOType.IN_MEMORY),IOMapping("PT", Image, IOType.IN_MEMORY)],
             output_mapping=[IOMapping("pred", Image, IOType.IN_MEMORY)],
             app_context=app_context,
             bundle_config_names=config_names,
-            name="monet_bundle_spleen_seg_op",
+            ref_modality="PT",
+            name="nnunet_bundle_spleen_seg_op",
         )
 
         # Create DICOM Seg writer providing the required segment description for each segment with
         # the actual algorithm and the pertinent organ/tissue. The segment_label, algorithm_name,
         # and algorithm_version are of DICOM VR LO type, limited to 64 chars.
         # https://dicom.nema.org/medical/dicom/current/output/chtml/part05/sect_6.2.html
-        segment_descriptions = [
-            SegmentDescription(
-                segment_label="Spleen",
-                segmented_property_category=codes.SCT.Organ,
-                segmented_property_type=codes.SCT.Spleen,
-                algorithm_name="volumetric (3D) segmentation of the spleen from CT image",
-                algorithm_family=codes.DCM.ArtificialIntelligence,
-                algorithm_version="0.3.2",
-            )
-        ]
 
-        custom_tags = {"SeriesDescription": "AI generated Seg, not for clinical use."}
+        id_prefix = ""
+        files = list(Path(app_input_path).glob("*"))
+        self._logger.info(f"Found files in directory {app_input_path}: {files}")
+        for file in files:
+            if file.name.endswith("_ct.nii.gz"):
+                id_prefix = file.name.replace("_ct.nii.gz", "")
+        output_file = Path(app_output_path).joinpath(id_prefix + ".nii.gz")
 
-        dicom_seg_writer = DICOMSegmentationWriterOperator(
+        if Path(output_file).is_file():
+            output_file = Path(app_output_path).joinpath(id_prefix + "_seg.nii.gz")
+
+        nifti_seg_writer = NiftiDataWriter(
             self,
-            segment_descriptions=segment_descriptions,
-            custom_tags=custom_tags,
-            output_folder=app_output_path,
-            name="dicom_seg_writer",
+            output_file=output_file,
+            name="nifti_seg_writer",
         )
 
         # Create the processing pipeline, by specifying the source and destination operators, and
         # ensuring the output from the former matches the input of the latter, in both name and type.
-        self.add_flow(study_loader_op, series_selector_op, {("dicom_study_list", "dicom_study_list")})
-        self.add_flow(
-            series_selector_op, series_to_vol_op, {("study_selected_series_list", "study_selected_series_list")}
-        )
-        self.add_flow(series_to_vol_op, bundle_spleen_seg_op, {("image", "image")})
+        self.add_flow(ct_nifti_loader_op, bundle_spleen_seg_op, {("image", "CT")})
+        self.add_flow(pt_nifti_loader_op, bundle_spleen_seg_op, {("image", "PT")})
         # Note below the dicom_seg_writer requires two inputs, each coming from a source operator.
-        self.add_flow(
-            series_selector_op, dicom_seg_writer, {("study_selected_series_list", "study_selected_series_list")}
-        )
-        self.add_flow(bundle_spleen_seg_op, dicom_seg_writer, {("pred", "seg_image")})
+        self.add_flow(bundle_spleen_seg_op, nifti_seg_writer, {("pred", "seg_image")})
         # Create the surface mesh STL conversion operator and add it to the app execution flow, if needed, by
-        # uncommenting the following couple lines.
-        stl_conversion_op = STLConversionOperator(
-            self, output_file=app_output_path.joinpath("stl/spleen.stl"), name="stl_conversion_op"
-        )
-        self.add_flow(bundle_spleen_seg_op, stl_conversion_op, {("pred", "image")})
-
         logging.info(f"End {self.compose.__name__}")
 
 
-# This is a sample series selection rule in JSON, simply selecting CT series.
-# If the study has more than 1 CT series, then all of them will be selected.
-# Please see more detail in DICOMSeriesSelectorOperator.
-Sample_Rules_Text = """
-{
-    "selections": [
-        {
-            "name": "CT Series",
-            "conditions": {
-                "StudyDescription": "(.*?)",
-                "Modality": "(?i)CT",
-                "SeriesDescription": "(.*?)"
-            }
-        }
-    ]
-}
-"""
-
 if __name__ == "__main__":
+
     logging.info(f"Begin {__name__}")
-    AISpleenMONetSegApp().run()
+    AILymphomaNIFTIMONetSegApp().run()
     logging.info(f"End {__name__}")

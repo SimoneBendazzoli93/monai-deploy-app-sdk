@@ -9,11 +9,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
+import os
+import sys
 
-from app import AISpleenNIFTIMONetSegApp
-
-if __name__ == "__main__":
-    logging.info(f"Begin {__name__}")
-    AISpleenNIFTIMONetSegApp().run()
-    logging.info(f"End {__name__}")
+_current_dir = os.path.abspath(os.path.dirname(__file__))
+if sys.path and os.path.abspath(sys.path[0]) != _current_dir:
+    sys.path.insert(0, _current_dir)
+del _current_dir

@@ -11,9 +11,9 @@
 
 import logging
 
-from app import AISpleenNIFTIMONetSegApp
+from app import AILymphomaNIFTIMONetSegApp
 
 if __name__ == "__main__":
     logging.info(f"Begin {__name__}")
-    AISpleenNIFTIMONetSegApp().run()
+    AILymphomaNIFTIMONetSegApp().run()
     logging.info(f"End {__name__}")

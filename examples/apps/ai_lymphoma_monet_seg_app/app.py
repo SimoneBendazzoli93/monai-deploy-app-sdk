@@ -16,6 +16,7 @@ from pydicom.sr.codedict import codes
 
 from monai.deploy.conditions import CountCondition
 from monai.deploy.core import AppContext, Application
+from pydicom.sr.codedict import Code
 from monai.deploy.core.domain import Image
 from monai.deploy.core.io_type import IOType
 from monai.deploy.operators.dicom_data_loader_operator import DICOMDataLoaderOperator
@@ -30,21 +31,7 @@ from monai.deploy.operators.stl_conversion_operator import STLConversionOperator
 # @resource(cpu=1, gpu=1, memory="7Gi")
 # pip_packages can be a string that is a path(str) to requirements.txt file or a list of packages.
 # The monai pkg is not required by this class, instead by the included operators.
-class AISpleenMONetSegApp(Application):
-    """Demonstrates inference with built-in MONet Bundle inference operator with DICOM files as input/output
-
-    This application loads a set of DICOM instances, select the appropriate series, converts the series to
-    3D volume image, performs inference with the built-in MONet Bundle inference operator, including nnUNet resampling,pre-processing
-    and post-processing, save the segmentation image in a DICOM Seg OID in an instance file, and optionally the
-    surface mesh in STL format.
-
-    Pertinent nnUNet MONAI Bundle:
-      <Upload to the MONAI Model Zoo>
-
-    Execution Time Estimate:
-      With a Nvidia RTXA600 48GB GPU, for an input DICOM Series of size 106x415x415 and patches of size 64x192x160, the execution time is around
-      50 seconds with saving both DICOM Seg and surface mesh STL file.
-    """
+class AILymphomaMONetSegApp(Application):
 
     def __init__(self, *args, **kwargs):
         """Creates an application instance."""
@@ -71,37 +58,31 @@ class AISpleenMONetSegApp(Application):
         study_loader_op = DICOMDataLoaderOperator(
             self, CountCondition(self, 1), input_folder=app_input_path, name="study_loader_op"
         )
-        series_selector_op = DICOMSeriesSelectorOperator(self, rules=Sample_Rules_Text, name="series_selector_op")
-        series_to_vol_op = DICOMSeriesToVolumeOperator(self, name="series_to_vol_op")
+        CT_series_selector_op = DICOMSeriesSelectorOperator(self, rules=CT_Rules_Text, name="ct_series_selector_op")
+        CT_series_to_vol_op = DICOMSeriesToVolumeOperator(self, name="ct_series_to_vol_op")
+        
+        PT_series_selector_op = DICOMSeriesSelectorOperator(self, rules=PET_Rules_Text, name="pt_series_selector_op")
+        PT_series_to_vol_op = DICOMSeriesToVolumeOperator(self, name="pt_series_to_vol_op")
 
-        # Create the inference operator that supports MONAI Bundle and automates the inference.
-        # The IOMapping labels match the input and prediction keys in the pre and post processing.
-        # The model_name is optional when the app has only one model.
-        # The bundle_path argument optionally can be set to an accessible bundle file path in the dev
-        # environment, so when the app is packaged into a MAP, the operator can complete the bundle parsing
-        # during init.
 
         config_names = BundleConfigNames(config_names=["inference"])  # Same as the default
 
-        bundle_spleen_seg_op = MONetBundleInferenceOperator(
+        bundle_lymphoma_seg_op = MONetBundleInferenceOperator(
             self,
-            input_mapping=[IOMapping("image", Image, IOType.IN_MEMORY)],
+            input_mapping=[IOMapping("CT", Image, IOType.IN_MEMORY),IOMapping("PT", Image, IOType.IN_MEMORY)],
             output_mapping=[IOMapping("pred", Image, IOType.IN_MEMORY)],
             app_context=app_context,
             bundle_config_names=config_names,
-            name="monet_bundle_spleen_seg_op",
+            ref_modality="PT", 
+            name="monet_bundle_lymphoma_seg_op",
         )
 
-        # Create DICOM Seg writer providing the required segment description for each segment with
-        # the actual algorithm and the pertinent organ/tissue. The segment_label, algorithm_name,
-        # and algorithm_version are of DICOM VR LO type, limited to 64 chars.
-        # https://dicom.nema.org/medical/dicom/current/output/chtml/part05/sect_6.2.html
         segment_descriptions = [
             SegmentDescription(
-                segment_label="Spleen",
-                segmented_property_category=codes.SCT.Organ,
-                segmented_property_type=codes.SCT.Spleen,
-                algorithm_name="volumetric (3D) segmentation of the spleen from CT image",
+                segment_label="Lesion",
+                segmented_property_category = codes.SCT.Lesion,
+                segmented_property_type = Code("255081000000109", "SCT", "Lymphoma"),   
+                algorithm_name="volumetric (3D) segmentation of Lymphoma Lesion from PET-CT image",
                 algorithm_family=codes.DCM.ArtificialIntelligence,
                 algorithm_version="0.3.2",
             )
@@ -117,32 +98,34 @@ class AISpleenMONetSegApp(Application):
             name="dicom_seg_writer",
         )
 
-        # Create the processing pipeline, by specifying the source and destination operators, and
-        # ensuring the output from the former matches the input of the latter, in both name and type.
-        self.add_flow(study_loader_op, series_selector_op, {("dicom_study_list", "dicom_study_list")})
+        self.add_flow(study_loader_op, CT_series_selector_op, {("dicom_study_list", "dicom_study_list")})
         self.add_flow(
-            series_selector_op, series_to_vol_op, {("study_selected_series_list", "study_selected_series_list")}
+            CT_series_selector_op, CT_series_to_vol_op, {("study_selected_series_list", "study_selected_series_list")}
         )
-        self.add_flow(series_to_vol_op, bundle_spleen_seg_op, {("image", "image")})
+        self.add_flow(CT_series_to_vol_op, bundle_lymphoma_seg_op, {("image", "CT")})
+        
+        
+        self.add_flow(study_loader_op, PT_series_selector_op, {("dicom_study_list", "dicom_study_list")})
+        self.add_flow(
+            PT_series_selector_op, PT_series_to_vol_op, {("study_selected_series_list", "study_selected_series_list")}
+        )
+        self.add_flow(PT_series_to_vol_op, bundle_lymphoma_seg_op, {("image", "PT")})
         # Note below the dicom_seg_writer requires two inputs, each coming from a source operator.
         self.add_flow(
-            series_selector_op, dicom_seg_writer, {("study_selected_series_list", "study_selected_series_list")}
+            PT_series_selector_op, dicom_seg_writer, {("study_selected_series_list", "study_selected_series_list")}
         )
-        self.add_flow(bundle_spleen_seg_op, dicom_seg_writer, {("pred", "seg_image")})
-        # Create the surface mesh STL conversion operator and add it to the app execution flow, if needed, by
-        # uncommenting the following couple lines.
+        self.add_flow(bundle_lymphoma_seg_op, dicom_seg_writer, {("pred", "seg_image")})
+
         stl_conversion_op = STLConversionOperator(
-            self, output_file=app_output_path.joinpath("stl/spleen.stl"), name="stl_conversion_op"
+            self, output_file=app_output_path.joinpath("stl/Lymphoma_Lesions.stl"), name="stl_conversion_op"
         )
-        self.add_flow(bundle_spleen_seg_op, stl_conversion_op, {("pred", "image")})
+        self.add_flow(bundle_lymphoma_seg_op, stl_conversion_op, {("pred", "image")})
 
         logging.info(f"End {self.compose.__name__}")
 
 
-# This is a sample series selection rule in JSON, simply selecting CT series.
-# If the study has more than 1 CT series, then all of them will be selected.
-# Please see more detail in DICOMSeriesSelectorOperator.
-Sample_Rules_Text = """
+
+CT_Rules_Text = """
 {
     "selections": [
         {
@@ -157,7 +140,22 @@ Sample_Rules_Text = """
 }
 """
 
+PET_Rules_Text = """
+{
+    "selections": [
+        {
+            "name": "PET Series",
+            "conditions": {
+                "StudyDescription": "(.*?)",
+                "Modality": "(?i)PT",
+                "SeriesDescription": "(.*?)"
+            }
+        }
+    ]
+}
+"""
+
 if __name__ == "__main__":
     logging.info(f"Begin {__name__}")
-    AISpleenMONetSegApp().run()
+    AILymphomaMONetSegApp().run()
     logging.info(f"End {__name__}")

@@ -25,7 +25,7 @@ from monai.deploy.operators.nii_data_writer_operator import NiftiDataWriter
 # @resource(cpu=1, gpu=1, memory="7Gi")
 # pip_packages can be a string that is a path(str) to requirements.txt file or a list of packages.
 # The monai pkg is not required by this class, instead by the included operators.
-class AISpleenNIFTInnUNetSegApp(Application):
+class AISpleenNIFTIMONetSegApp(Application):
     """Demonstrates inference with built-in MONAI nnUNet Bundle inference operator with DICOM files as input/output
 
     This application loads a set of DICOM instances, select the appropriate series, converts the series to
@@ -64,7 +64,7 @@ class AISpleenNIFTInnUNetSegApp(Application):
 
         # Create the custom operator(s) as well as SDK built-in operator(s).
         nifti_loader_op = NiftiDataLoader(
-            self, CountCondition(self, 1), input_path=app_input_path, name="nifti_loader_op"
+            self, CountCondition(self, 1), input_path=app_input_path, name="nifti_loader_op", modality_mapping=".nii.gz"
         )
         # Create the inference operator that supports MONAI Bundle and automates the inference.
         # The IOMapping labels match the input and prediction keys in the pre and post processing.
@@ -81,7 +81,7 @@ class AISpleenNIFTInnUNetSegApp(Application):
             output_mapping=[IOMapping("pred", Image, IOType.IN_MEMORY)],
             app_context=app_context,
             bundle_config_names=config_names,
-            name="nnunet_bundle_spleen_seg_op",
+            name="monet_bundle_spleen_seg_op",
         )
 
         # Create DICOM Seg writer providing the required segment description for each segment with
@@ -89,15 +89,16 @@ class AISpleenNIFTInnUNetSegApp(Application):
         # and algorithm_version are of DICOM VR LO type, limited to 64 chars.
         # https://dicom.nema.org/medical/dicom/current/output/chtml/part05/sect_6.2.html
 
-        output_file = Path(app_output_path).joinpath(Path(app_input_path).name)
-        if "_image" in Path(app_input_path).name:
-            output_file = Path(app_output_path).joinpath(str(Path(output_file).name).split("_image")[0] + ".nii.gz")
+        id_prefix = ""
+        files = list(Path(app_input_path).glob("*"))
+        self._logger.info(f"Found files in directory {app_input_path}: {files}")
+        for file in files:
+            if file.name.endswith(".nii.gz"):
+                id_prefix = file.name.replace(".nii.gz", "")
+        output_file = Path(app_output_path).joinpath(id_prefix + ".nii.gz")
+
         if Path(output_file).is_file():
-            output_file = Path(app_output_path).joinpath(Path(app_input_path).name.replace(".nii.gz", "_seg.nii.gz"))
-            if "_image" in Path(app_input_path).name:
-                output_file = Path(app_output_path).joinpath(
-                    str(Path(output_file).name).split("_image")[0] + "_seg.nii.gz"
-                )
+            output_file = Path(app_output_path).joinpath(id_prefix + "_seg.nii.gz")
 
         nifti_seg_writer = NiftiDataWriter(
             self,
@@ -117,5 +118,5 @@ class AISpleenNIFTInnUNetSegApp(Application):
 if __name__ == "__main__":
 
     logging.info(f"Begin {__name__}")
-    AISpleenNIFTInnUNetSegApp().run()
+    AISpleenNIFTIMONetSegApp().run()
     logging.info(f"End {__name__}")
