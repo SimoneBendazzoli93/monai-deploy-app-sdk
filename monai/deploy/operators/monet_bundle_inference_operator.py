@@ -142,15 +142,24 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
                 if self.ref_modality not in kwargs:
                     target_affine_4x4 = define_affine_from_meta(data.meta)
                     spatial_size = data.shape[1:4]
-                    pixdim = data.meta["pixdim"]
+                    if "pixdim" in data.meta:
+                        pixdim = data.meta["pixdim"]
+                    else:
+                        pixdim = target_affine_4x4[:3, :3].diagonal().tolist()
                 else:
                     target_affine_4x4 = define_affine_from_meta(kwargs[self.ref_modality].meta)
                     spatial_size = kwargs[self.ref_modality].shape[1:4]
-                    pixdim = kwargs[self.ref_modality].meta["pixdim"]
+                    if "pixdim" in kwargs[self.ref_modality].meta:
+                        pixdim = kwargs[self.ref_modality].meta["pixdim"]
+                    else:
+                        pixdim = target_affine_4x4[:3, :3].diagonal().tolist()
             else:
                 target_affine_4x4 = define_affine_from_meta(data.meta)
                 spatial_size = data.shape[1:4]
-                pixdim = data.meta["pixdim"]
+                if "pixdim" in data.meta:
+                    pixdim = data.meta["pixdim"]
+                else:
+                    pixdim = target_affine_4x4[:3, :3].diagonal().tolist()
             
             for key in kwargs.keys():
                 if isinstance(kwargs[key], MetaTensor):
