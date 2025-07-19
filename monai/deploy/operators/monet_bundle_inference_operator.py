@@ -180,7 +180,9 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
             
             self._logger.info(f"Resampling 'image' from from {source_affine_4x4} to {target_affine_4x4}")
             data = ConcatItemsd(keys=list(multimodal_data.keys()),name="image")(multimodal_data)["image"]
+            print(data.shape)
             data.meta["pixdim"] = np.insert(pixdim, 0, 0)
+            print(data.meta["pixdim"])
 
         if len(data.shape) == 4:
             data = data[None]
