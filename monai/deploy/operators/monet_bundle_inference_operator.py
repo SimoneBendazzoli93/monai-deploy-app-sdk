@@ -145,22 +145,22 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
                     if "pixdim" in data.meta:
                         pixdim = data.meta["pixdim"]
                     else:
-                        pixdim = target_affine_4x4[:3, :3].diagonal().tolist()
+                        pixdim = np.array(target_affine_4x4[:3, :3].diagonal().tolist())
                 else:
                     target_affine_4x4 = define_affine_from_meta(kwargs[self.ref_modality].meta)
                     spatial_size = kwargs[self.ref_modality].shape[1:4]
                     if "pixdim" in kwargs[self.ref_modality].meta:
                         pixdim = kwargs[self.ref_modality].meta["pixdim"]
                     else:
-                        pixdim = target_affine_4x4[:3, :3].diagonal().tolist()
+                        pixdim = np.array(target_affine_4x4[:3, :3].diagonal().tolist())
             else:
                 target_affine_4x4 = define_affine_from_meta(data.meta)
                 spatial_size = data.shape[1:4]
                 if "pixdim" in data.meta:
                     pixdim = data.meta["pixdim"]
                 else:
-                    pixdim = target_affine_4x4[:3, :3].diagonal().tolist()
-            
+                    pixdim = np.array(target_affine_4x4[:3, :3].diagonal().tolist())
+
             for key in kwargs.keys():
                 if isinstance(kwargs[key], MetaTensor):
                     source_affine_4x4 = define_affine_from_meta(kwargs[key].meta)
