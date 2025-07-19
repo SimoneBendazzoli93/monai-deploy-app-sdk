@@ -145,21 +145,21 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
                     if "pixdim" in data.meta:
                         pixdim = data.meta["pixdim"]
                     else:
-                        pixdim = np.array([0] + target_affine_4x4[:3, :3].diagonal().tolist())
+                        pixdim = np.array(target_affine_4x4[:3, :3].diagonal().tolist())
                 else:
                     target_affine_4x4 = define_affine_from_meta(kwargs[self.ref_modality].meta)
                     spatial_size = kwargs[self.ref_modality].shape[1:4]
                     if "pixdim" in kwargs[self.ref_modality].meta:
                         pixdim = kwargs[self.ref_modality].meta["pixdim"]
                     else:
-                        pixdim = np.array([0] + target_affine_4x4[:3, :3].diagonal().tolist())
+                        pixdim = np.array(target_affine_4x4[:3, :3].diagonal().tolist())
             else:
                 target_affine_4x4 = define_affine_from_meta(data.meta)
                 spatial_size = data.shape[1:4]
                 if "pixdim" in data.meta:
                     pixdim = data.meta["pixdim"]
                 else:
-                    pixdim = np.array([0] + target_affine_4x4[:3, :3].diagonal().tolist())
+                    pixdim = np.array(target_affine_4x4[:3, :3].diagonal().tolist())
 
             for key in kwargs.keys():
                 if isinstance(kwargs[key], MetaTensor):
@@ -180,6 +180,7 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
             
             self._logger.info(f"Resampling 'image' from from {source_affine_4x4} to {target_affine_4x4}")
             data = ConcatItemsd(keys=list(multimodal_data.keys()),name="image")(multimodal_data)["image"]
+            data.meta["pixdim"] = np.insert(pixdim, 0, 0)
 
         if len(data.shape) == 4:
             data = data[None]
