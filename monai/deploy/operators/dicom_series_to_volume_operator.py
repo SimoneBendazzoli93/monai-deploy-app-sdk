@@ -24,7 +24,7 @@ apply_rescale, _ = optional_import("pydicom.pixels", name="apply_rescale")
 from monai.deploy.core import ConditionType, Fragment, Operator, OperatorSpec
 from monai.deploy.core.domain.dicom_series_selection import StudySelectedSeries
 from monai.deploy.core.domain.image import Image
-
+import time
 
 class DICOMSeriesToVolumeOperator(Operator):
     """This operator converts an instance of DICOMSeries into an Image object.
@@ -211,6 +211,15 @@ class DICOMSeriesToVolumeOperator(Operator):
             else:
                 logging.debug("Rescaled pixel data remains as of type float64.")
 
+            sub_bw_scale_factor = None
+            if sop_instance.get_native_sop_instance().get("Modality", "").strip().upper() == "PT":
+                try:
+                    sub_bw_scale_factor = self.normalize_PET_to_SUV_BW(sop_instance.get_native_sop_instance())
+                    logging.debug(f"Normalization factor for PET to SUV BW: {sub_bw_scale_factor}")
+                except KeyError as e:
+                    logging.warning(f"Failed to normalize PET to SUV BW: {e}. Continuing without normalization.")
+            if sub_bw_scale_factor is not None:
+                rescaled_pixel_data = rescaled_pixel_data * sub_bw_scale_factor
             return rescaled_pixel_data
 
         slices = series.get_sop_instances()
