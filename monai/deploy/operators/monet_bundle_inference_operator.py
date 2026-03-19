@@ -73,7 +73,7 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
         """
         if (
             not isinstance(model_network, torch.nn.Module)
-            and not torch.jit.isinstance(model_network, torch.jit.ScriptModule)
+            and not isinstance(model_network, torch.jit.ScriptModule)
             and not isinstance(model_network, TorchScriptModel)
             and not isinstance(model_network, TritonModel)
         ):
