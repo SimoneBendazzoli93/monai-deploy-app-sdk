@@ -95,5 +95,7 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
         if len(data.shape) == 4:
             data = data[None]
         prediction = self._nnunet_predictor(data)
-        prediction.meta = data.meta
+        if hasattr(prediction, "meta") and hasattr(data, "meta"):
+            prediction.meta = data.meta
+        return prediction
         return prediction
