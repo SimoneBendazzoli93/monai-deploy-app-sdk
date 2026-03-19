@@ -26,7 +26,6 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
     """
     A specialized operator for performing inference using the MONet bundle (https://github.com/minnelab/MONet-Bundle).
     For more details, please refer to the [MONet-Bundle](https://github.com/minnelab/MONet-Bundle) repository.
-    A specialized operator for performing inference using the MONet bundle.
     This operator extends the `MonaiBundleInferenceOperator` to support nnUNet-specific
     configurations and prediction logic. It initializes the nnUNet predictor and provides
     a method for performing inference on input data.
