@@ -57,10 +57,7 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
     def _init_config(self, config_names):
 
         super()._init_config(config_names)
-        parser = get_bundle_config(str(self._bundle_path), config_names)
-        self._parser = parser
-
-        self._nnunet_predictor = parser.get_parsed_content("network_def")
+        self._nnunet_predictor = self._parser.get_parsed_content("network_def")
 
     def _set_model_network(self, model_network):
         """
@@ -97,5 +94,4 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
         prediction = self._nnunet_predictor(data)
         if hasattr(prediction, "meta") and hasattr(data, "meta"):
             prediction.meta = data.meta
-        return prediction
         return prediction
