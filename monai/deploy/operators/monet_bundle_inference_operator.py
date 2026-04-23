@@ -1,4 +1,4 @@
-# Copyright 2002 MONAI Consortium
+# Copyright 2025 MONAI Consortium
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -16,6 +16,7 @@ from monai.deploy.operators.monai_bundle_inference_operator import MonaiBundleIn
 from monai.deploy.utils.importutil import optional_import
 from monai.transforms import ConcatItemsd, ResampleToMatch
 from monai.deploy.core.models.torch_model import TorchScriptModel
+from monai.deploy.core.models.triton_model import TritonModel
 torch, _ = optional_import("torch", "1.10.2")
 MetaTensor, _ = optional_import("monai.data.meta_tensor", name="MetaTensor")
 __all__ = ["MONetBundleInferenceOperator"]
@@ -23,7 +24,8 @@ __all__ = ["MONetBundleInferenceOperator"]
 
 class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
     """
-    A specialized operator for performing inference using the MONet bundle.
+    A specialized operator for performing inference using the MONet bundle (https://github.com/minnelab/MONet-Bundle).
+    For more details, please refer to the [MONet-Bundle](https://github.com/minnelab/MONet-Bundle) repository.
     This operator extends the `MonaiBundleInferenceOperator` to support nnUNet-specific
     configurations and prediction logic. It initializes the nnUNet predictor and provides
     a method for performing inference on input data.
@@ -55,10 +57,7 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
     def _init_config(self, config_names):
 
         super()._init_config(config_names)
-        parser = get_bundle_config(str(self._bundle_path), config_names)
-        self._parser = parser
-
-        self._nnunet_predictor = parser.get_parsed_content("network_def")
+        self._nnunet_predictor = self._parser.get_parsed_content("network_def")
 
     def _set_model_network(self, model_network):
         """
@@ -69,10 +68,15 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
         model_network : torch.nn.Module or torch.jit.ScriptModule
             The model network to be used for inference.
         """
-        if not isinstance(model_network, torch.nn.Module) and not torch.jit.isinstance(model_network, torch.jit.ScriptModule) and not isinstance(model_network, TorchScriptModel):
+        if (
+            not isinstance(model_network, torch.nn.Module)
+            and not isinstance(model_network, torch.jit.ScriptModule)
+            and not isinstance(model_network, TorchScriptModel)
+            and not isinstance(model_network, TritonModel)
+        ):
             raise TypeError("model_network must be an instance of torch.nn.Module or torch.jit.ScriptModule")
         self._nnunet_predictor.predictor.network = model_network
-    
+
     def predict(self, data: Any, *args, **kwargs) -> Union[Image, Any, Tuple[Any, ...], Dict[Any, Any]]:
         """Predicts output using the inferer. If multimodal data is provided as keyword arguments,
         it concatenates the data with the main input data."""
@@ -83,9 +87,11 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
             multimodal_data = {"image": data}
             for key in kwargs.keys():
                 if isinstance(kwargs[key], MetaTensor):
-                    multimodal_data[key] = ResampleToMatch(mode="bilinear")(kwargs[key], img_dst=data
-                                                         )
-            data = ConcatItemsd(keys=list(multimodal_data.keys()),name="image")(multimodal_data)["image"]
+                    multimodal_data[key] = ResampleToMatch(mode="bilinear")(kwargs[key], img_dst=data)
+            data = ConcatItemsd(keys=list(multimodal_data.keys()), name="image")(multimodal_data)["image"]
         if len(data.shape) == 4:
             data = data[None]
-        return self._nnunet_predictor(data)
+        prediction = self._nnunet_predictor(data)
+        if hasattr(prediction, "meta") and hasattr(data, "meta"):
+            prediction.meta = data.meta
+        return prediction

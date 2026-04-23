@@ -137,17 +137,13 @@ MONAI Deploy App SDK's code coverage report is available at [CodeCov](https://co
 
 #### Building the documentation
 
-:::{note}
-Please note that the documentation builds successfully in Python 3.9 environment, but fails with Python 3.10.
-:::
-
 MONAI's documentation is located at `docs/`.
 
 ```bash
 ./run gen_docs  # '-h' for help
 ```
 
-The above command builds HTML documents in the `dist/docs` folder, they are used to automatically generate documents in [https://docs.monai.io](https://docs.monai.io).
+The above command builds HTML documents in the `dist/docs` folder, they are used to automatically generate documents in [https://project-monai.github.io](https://project-monai.github.io).
 
 To test HTML docs locally with development server, execute below command:
 

@@ -53,6 +53,7 @@ from monai.deploy import __version__ as MONAI_APP_SDK_VERSION  # noqa: E402
 short_version = MONAI_APP_SDK_VERSION.split("+")[0]
 release = short_version
 version = re.sub(r"(a|b|rc)\d+.*", "", short_version)
+release = "Stable"  # stable for now since short_version is always 1.0.0 for as of now
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
@@ -83,7 +84,7 @@ extensions = [
     "myst_nb",
     "sphinx_copybutton",
     "sphinx_togglebutton",
-    "sphinx_panels",  # https://sphinx-panels.readthedocs.io/en/latest/
+    "sphinx_design",  # https://sphinx-design.readthedocs.io/en/latest/
     "ablog",
     "sphinxemoji.sphinxemoji",
     # https://myst-parser.readthedocs.io/en/latest/sphinx/use.html#automatically-create-targets-for-section-headers
@@ -91,6 +92,7 @@ extensions = [
     "sphinx_autodoc_typehints",
     "sphinxcontrib.mermaid",
 ]
+bibtex_bibfiles = ["refs.bib"]
 
 autoclass_content = "both"
 add_module_names = True
@@ -125,7 +127,7 @@ templates_path = ["_templates"]
 #
 html_theme = "pydata_sphinx_theme"
 html_theme_options = {
-    "logo_link": "https://monai.io",
+    "logo_link": "https://project-monai.github.io",
     "external_links": [
         {"url": "https://github.com/Project-MONAI/monai-deploy-app-sdk/issues/new/choose", "name": "SUBMIT ISSUE"}
     ],
@@ -180,10 +182,10 @@ html_static_path = ["../_static"]
 html_css_files = ["custom.css"]
 html_title = f"{project} {version} Documentation"
 
-# -- Options for sphinx-panels -------------------------------------------------
+# -- Options for sphinx-design -------------------------------------------------
 #
-# (reference: https://sphinx-panels.readthedocs.io/en/latest/)
-panels_add_bootstrap_css = False  # pydata-sphinx-theme already loads bootstrap css
+# (reference: https://sphinx-design.readthedocs.io/en/latest/)
+# No additional configuration needed - sphinx-design works with pydata-sphinx-theme
 
 # -- Options for linkcheck builder -------------------------------------------------
 #
@@ -222,14 +224,10 @@ myst_heading_anchors = 5
 # -- Options for myst-nb -------------------------------------------------
 #
 # (reference: https://myst-nb.readthedocs.io/en/latest/)
-# Prevent the following error
-#     MyST NB Configuration Error:
-#    `nb_render_priority` not set for builder: doctest
-nb_render_priority = {"doctest": ()}
 # Prevent creating jupyter_execute folder in dist
 #  https://myst-nb.readthedocs.io/en/latest/use/execute.html#executing-in-temporary-folders  # noqa
-execution_in_temp = True
-jupyter_execute_notebooks = "off"
+nb_execution_in_temp = True
+nb_execution_mode = "off"
 
 
 # -- Options for sphinxcontrib.spelling -------------------------------------------------
