@@ -17,6 +17,8 @@ import numpy as np
 
 from monai.deploy.core import ConditionType, Fragment, Operator, OperatorSpec
 from monai.deploy.utils.importutil import optional_import
+from monai.transforms import LoadImage
+from monai.deploy.core.domain.image import Image
 
 SimpleITK, _ = optional_import("SimpleITK")
 
@@ -81,11 +83,11 @@ class NiftiDataLoader(Operator):
             elif self.input_path and self.input_path.is_dir() and self.modality_mapping:
                 # Find all files in the input directory
                 files = list(Path(self.input_path).glob("*"))
-                self._logger.info(f"Found files in directory {self.input_path}: {files}")
+                
                 for file in files:
                     if file.name.endswith(self.modality_mapping):
                         id_prefix = file.name.replace(self.modality_mapping, "")
-
+                        self._logger.info(f"Found file in directory {self.input_path}: {id_prefix + self.modality_mapping}")
                         input_path = str(Path(self.input_path).joinpath(id_prefix + self.modality_mapping))
             else:
                 raise ValueError(f"No valid file path from input port or obj attribute: {self.input_path}")
@@ -97,6 +99,9 @@ class NiftiDataLoader(Operator):
         """
         reads the nifti image and returns a numpy image array
         """
+        load_image = LoadImage()
+        image = load_image(nii_path)
+        return Image(image.numpy(), metadata=image.meta)
         image_reader = SimpleITK.ImageFileReader()
         image_reader.SetFileName(str(nii_path))
         image = image_reader.Execute()

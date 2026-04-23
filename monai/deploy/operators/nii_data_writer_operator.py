@@ -14,9 +14,11 @@ import logging
 from pathlib import Path
 
 import numpy as np
-
+import os
 from monai.deploy.core import ConditionType, Fragment, Operator, OperatorSpec
 from monai.deploy.utils.importutil import optional_import
+from monai.transforms import SaveImage, Transpose
+from monai.data import MetaTensor
 
 SimpleITK, _ = optional_import("SimpleITK")
 
@@ -62,10 +64,17 @@ class NiftiDataWriter(Operator):
 
         self.convert_and_save(seg_image, output_file)
 
-    def convert_and_save(self, seg_image, nii_path):
+    def convert_and_save(self, seg_image, output_file):
         """
         reads the nifti image and returns a numpy image array
         """
+        output_dir = os.path.dirname(output_file)
+        output_postfix = "seg"
+        seg_image_tensor = Transpose(indices=(2,1,0))(MetaTensor(seg_image._data, metadata=seg_image._metadata))
+        seg_image_tensor.meta = seg_image._metadata
+        save_image = SaveImage(output_dir=output_dir, output_postfix=output_postfix, output_ext='.nii.gz', separate_folder=False)
+        save_image(seg_image_tensor)
+        return
         image_writer = SimpleITK.ImageFileWriter()
 
         pixdim = seg_image.metadata()["pixdim"]
