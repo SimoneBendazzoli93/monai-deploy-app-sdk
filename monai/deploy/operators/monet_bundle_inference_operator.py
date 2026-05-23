@@ -53,6 +53,10 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
         super().__init__(*args, **kwargs)
 
         self._nnunet_predictor: torch.nn.Module = None
+        if "ref_modality" in kwargs:
+            self.ref_modality = kwargs["ref_modality"]
+        else:
+            self.ref_modality = None
 
     def _init_config(self, config_names):
 
@@ -85,9 +89,16 @@ class MONetBundleInferenceOperator(MonaiBundleInferenceOperator):
 
         if len(kwargs) > 0:
             multimodal_data = {"image": data}
-            for key in kwargs.keys():
-                if isinstance(kwargs[key], MetaTensor):
-                    multimodal_data[key] = ResampleToMatch(mode="bilinear")(kwargs[key], img_dst=data)
+            if self.ref_modality is not None and self.ref_modality in kwargs:
+                multimodal_data["image"] = ResampleToMatch(mode="bilinear")(data, img_dst=kwargs[self.ref_modality])
+                multimodal_data[self.ref_modality] = kwargs[self.ref_modality]
+                for key in kwargs.keys():
+                    if isinstance(kwargs[key], MetaTensor) and key != self.ref_modality:
+                        multimodal_data[key] = ResampleToMatch(mode="bilinear")(kwargs[key], img_dst=kwargs[self.ref_modality])
+            else:
+                for key in kwargs.keys():
+                    if isinstance(kwargs[key], MetaTensor):
+                        multimodal_data[key] = ResampleToMatch(mode="bilinear")(kwargs[key], img_dst=data)
             data = ConcatItemsd(keys=list(multimodal_data.keys()), name="image")(multimodal_data)["image"]
         if len(data.shape) == 4:
             data = data[None]
